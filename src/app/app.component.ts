@@ -3,6 +3,7 @@ import {Configuration, Model, OpenAIApi} from "openai";
 import {TipModalComponent} from "./tip-modal/tip-modal.component";
 import {ChatCompletionRequestMessage} from "openai/dist/api";
 import * as hljs from 'highlight.js';
+import {HttpClient} from "@angular/common/http";
 
 @Component({
   selector: 'app-root',
@@ -11,8 +12,11 @@ import * as hljs from 'highlight.js';
 })
 export class AppComponent {
 
+
+  savedMessage = '';
   messageInput = '';
-  messages: { content: string; contentRaw: string; isRaw?: boolean; timestamp: Date; avatar: string; isUser: boolean;}[] = [];
+  lastAImessage = '';
+  messages: { content: string; contentRaw: string; isRaw?: boolean; timestamp: Date; avatar: string; isUser: boolean; }[] = [];
   chatbotTyping = false;
   apikey = '';
   chatHistory: Array<ChatCompletionRequestMessage> = [];
@@ -22,14 +26,18 @@ export class AppComponent {
 
   selectedModel: string = 'gpt-3.5-turbo';
   models: Model[] = [];
+  sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+
 
   @ViewChild('messageContainer', {static: false}) messageContainer: ElementRef;
 
   @ViewChild('tipModal') tipModal: TipModalComponent;
   showModal: boolean = false;
   temperature: number = 0.8;
+  private triggered: Boolean = false;
 
-  constructor() {
+  constructor(private http: HttpClient) {
     // Retrieve the API key from local storage, if it exists
     const savedApiKey = localStorage.getItem('apiKey');
     if (savedApiKey) {
@@ -44,6 +52,7 @@ export class AppComponent {
       this.selectedModel = savedSelectedModel;
     }
     this.refreshModels();
+
   }
 
   async sendMessage() {
@@ -101,7 +110,7 @@ export class AppComponent {
           });
       });
 
-    promise.then(response => {
+    promise.then(async response => {
       // Add the chatbot's response to the chat
       if (response && response.data && response.data.choices && response.data.choices.length > 0) {
         let message = '';
@@ -112,6 +121,9 @@ export class AppComponent {
           message = response.data.choices[0].text;
         }
         let messageRaw = message;
+        this.lastAImessage = messageRaw;
+        console.log("messageRaw: " + messageRaw);
+
         this.chatHistory.push({content: messageRaw, role: 'system'});
         message = this.formatListAsHtml(message);
         message = this.formatTableAsHtml(message);
@@ -124,6 +136,18 @@ export class AppComponent {
           avatar: '<i class="bi bi-laptop"></i>',
           isUser: false,
         });
+
+        // this.messages.forEach((msg, index) => {
+        //   console.log(msg);
+        // });
+
+        console.log(this.lastAImessage);
+        if (this.lastAImessage.includes("API") && !this.triggered) {
+          this.parseCommand();
+          await this.sleep(2000);
+          await this.sendMessage();
+        }
+
       }
       this.highlightCode();
 
@@ -147,7 +171,6 @@ export class AppComponent {
         alert(error.message);
       }
     });
-
   }
 
   private getOpenAi() {
@@ -227,4 +250,53 @@ export class AppComponent {
       container.classList.remove('dark-mode');
     }
   }
+
+  parseCommand(){
+    let command1 = this.lastAImessage.split('[')[1];
+    let command2 = command1.split(']')[0];
+    console.log("Command: " + command2);
+
+    if (command2.includes("helloWorld")) {
+      console.log("helloWord triggered");
+      this.messageInput = "API RETURN: Hello ChatGPT, your command has been received!";
+
+    } else if (command2.includes("weather")) {
+      console.log("weather triggered");
+      this.messageInput = "API RETURN: Current weather at the location of this server is 8 degrees celcius, cloudy with 88% humidity and 3% chance of precipation. ";
+    } else if (command2.includes("time")) {
+      console.log("time triggered");
+      let dateTime = new Date();
+      this.messageInput = "API RETURN: Current time at the server's location is " + dateTime.toTimeString();
+    } else if (command2.includes("saveMessage")) {
+      this.savedMessage = command2.split(':')[1];
+      console.log("time triggered");
+      let dateTime = new Date();
+      this.messageInput = "API RETURN: The message has been saved. ";
+    } else if (command2.includes("retrieveMessage")) {
+      console.log("time triggered");
+      let dateTime = new Date();
+      this.messageInput = "API RETURN: " + this.savedMessage;
+
+    } else if (command2.includes("startMC")) {
+      console.log("time triggered");
+      this.messageInput = "API RETURN: Start command sent to Minecraft server.";
+
+      //
+      // These don't work for obvious reasons:
+      //
+
+    //   this.http.get('http://localhost:8080/start').subscribe((response) => {
+    //     console.log(response);
+    //   });
+    // } else if (command2.includes("getMCServerStatus")) {
+    //   this.http.get('http://localhost:8080/status').subscribe((response: string) => {
+    //     console.log(response);
+    //     this.messageInput = "API RETURN: " + response;
+    //   });
+    }
+    if(this.messageInput === ""){
+      this.messageInput = "API RETURN: Command execution failed."
+    }
+  }
+
 }
